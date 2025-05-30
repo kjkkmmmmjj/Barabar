@@ -1,73 +1,82 @@
 import React, { createContext, useState, useEffect } from 'react';
-import * as SecureStore from 'expo-secure-store';
-import { mockAuth } from '@/services/mockAuth';
+import { Session } from '@supabase/supabase-js';
 import { router } from 'expo-router';
+import { supabase, signInUser, signUpUser } from '@/services/supabase';
 
 type User = {
   id: string;
   email: string;
-  displayName?: string;
+  name: string;
 };
 
 type AuthContextType = {
   user: User | null;
+  session: Session | null;
   isLoading: boolean;
   isAuthenticated: boolean;
   login: (email: string, password: string) => Promise<void>;
   signup: (email: string, password: string, name: string) => Promise<void>;
   logout: () => Promise<void>;
-  updateProfile: (data: { displayName?: string }) => Promise<void>;
 };
 
 export const AuthContext = createContext<AuthContextType>({
   user: null,
+  session: null,
   isLoading: true,
   isAuthenticated: false,
   login: async () => {},
   signup: async () => {},
   logout: async () => {},
-  updateProfile: async () => {},
 });
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
+  const [session, setSession] = useState<Session | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Check if user is already logged in
-    const checkLoginState = async () => {
-      try {
-        const userJson = await SecureStore.getItemAsync('user');
-        
-        if (userJson) {
-          const userData = JSON.parse(userJson);
-          setUser(userData);
-          
-          // Redirect to the appropriate screen based on auth state
-          if (userData) {
-            router.replace('/(tabs)/');
-          } else {
-            router.replace('/login');
-          }
-        } else {
-          router.replace('/login');
-        }
-      } catch (error) {
-        console.error('Error checking login state:', error);
-      } finally {
-        setIsLoading(false);
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      if (session?.user) {
+        fetchUser(session.user.id);
       }
-    };
+    });
 
-    checkLoginState();
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+      if (session?.user) {
+        fetchUser(session.user.id);
+      } else {
+        setUser(null);
+      }
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
+
+  const fetchUser = async (userId: string) => {
+    const { data, error } = await supabase
+      .from('users')
+      .select('*')
+      .eq('id', userId)
+      .single();
+
+    if (error) {
+      console.error('Error fetching user:', error);
+      return;
+    }
+
+    setUser(data);
+  };
 
   const login = async (email: string, password: string) => {
     setIsLoading(true);
     try {
-      const userData = await mockAuth.login(email, password);
-      setUser(userData);
-      await SecureStore.setItemAsync('user', JSON.stringify(userData));
+      const { user } = await signInUser(email, password);
+      if (user) {
+        await fetchUser(user.id);
+        router.replace('/(tabs)/');
+      }
     } catch (error) {
       console.error('Login error:', error);
       throw error;
@@ -79,9 +88,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const signup = async (email: string, password: string, name: string) => {
     setIsLoading(true);
     try {
-      const userData = await mockAuth.signup(email, password, name);
-      setUser(userData);
-      await SecureStore.setItemAsync('user', JSON.stringify(userData));
+      const { user } = await signUpUser(email, password, name);
+      if (user) {
+        await fetchUser(user.id);
+        router.replace('/(tabs)/');
+      }
     } catch (error) {
       console.error('Signup error:', error);
       throw error;
@@ -93,28 +104,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const logout = async () => {
     setIsLoading(true);
     try {
-      await mockAuth.logout();
-      setUser(null);
-      await SecureStore.deleteItemAsync('user');
+      await supabase.auth.signOut();
       router.replace('/login');
     } catch (error) {
       console.error('Logout error:', error);
-      throw error;
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const updateProfile = async (data: { displayName?: string }) => {
-    setIsLoading(true);
-    try {
-      if (!user) throw new Error('User not authenticated');
-      
-      const updatedUser = await mockAuth.updateProfile(user.id, data);
-      setUser(updatedUser);
-      await SecureStore.setItemAsync('user', JSON.stringify(updatedUser));
-    } catch (error) {
-      console.error('Update profile error:', error);
       throw error;
     } finally {
       setIsLoading(false);
@@ -125,12 +118,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     <AuthContext.Provider
       value={{
         user,
+        session,
         isLoading,
-        isAuthenticated: !!user,
+        isAuthenticated: !!session,
         login,
         signup,
         logout,
-        updateProfile,
       }}
     >
       {children}
