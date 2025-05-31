@@ -7,6 +7,7 @@ import { GroupsProvider } from '@/context/GroupsContext';
 import { ThemeProvider } from '@/context/ThemeContext';
 import { useFonts } from 'expo-font';
 import { SplashScreen } from 'expo-router';
+import { Platform, View } from 'react-native';
 
 // Prevent splash screen from auto-hiding
 SplashScreen.preventAutoHideAsync();
@@ -33,17 +34,26 @@ export default function RootLayout() {
   }
 
   return (
-    <ThemeProvider>
-      <AuthProvider>
-        <GroupsProvider>
-          <Stack screenOptions={{ headerShown: false }}>
-            <Stack.Screen name="(auth)" options={{ headerShown: false }} />
-            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-            <Stack.Screen name="+not-found" options={{ title: 'Not Found' }} />
-          </Stack>
-          <StatusBar style="auto" />
-        </GroupsProvider>
-      </AuthProvider>
-    </ThemeProvider>
+    <View style={{ flex: 1, backgroundColor: '#fff' }}>
+      <ThemeProvider>
+        <AuthProvider>
+          <GroupsProvider>
+            <Stack screenOptions={{ 
+              headerShown: false,
+              ...Platform.select({
+                ios: {
+                  contentStyle: { backgroundColor: '#fff' }
+                }
+              })
+            }}>
+              <Stack.Screen name="(auth)" options={{ headerShown: false }} />
+              <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+              <Stack.Screen name="+not-found" options={{ title: 'Not Found' }} />
+            </Stack>
+            <StatusBar style="auto" />
+          </GroupsProvider>
+        </AuthProvider>
+      </ThemeProvider>
+    </View>
   );
 }
